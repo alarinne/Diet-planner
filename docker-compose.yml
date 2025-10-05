@@ -1,0 +1,71 @@
+name: diet-planner
+
+services:
+  db:
+    image: postgres:15
+    container_name: dp_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: diet_planner
+    ports:
+      - "5435:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d diet_planner"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [diet-net]
+
+  backend:
+    build:
+      context: ./backend-service
+    container_name: dp_backend
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: diet_planner
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    networks: [diet-net]
+
+  frontend-dev:
+    image: node:20
+    container_name: dp_frontend_dev
+    working_dir: /app
+    volumes:
+      - ./frontend-service:/app
+      - /app/node_modules
+    command: sh -c "npm ci && npx ng serve --host 0.0.0.0 --port 4300 --proxy-config proxy.conf.json --poll 2000"
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "4300:4300"
+    depends_on: [backend]
+    networks: [diet-net]
+
+  frontend:
+    build:
+      context: ./frontend-service
+    container_name: dp_frontend
+    depends_on: [backend]
+    ports:
+      - "4301:80"
+    networks: [diet-net]
+
+networks:
+  diet-net:
+    driver: bridge
+
+volumes:
+  db_data:
